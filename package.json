@@ -1,0 +1,25 @@
+{
+  "name": "excel-backup-journal-manager",
+  "version": "1.0.0",
+  "description": "A Node.js application for managing Excel backup journal files",
+  "main": "addRow.js",
+  "scripts": {
+    "start": "node addRow.js"
+  },
+  "keywords": [
+    "excel",
+    "backup",
+    "journal",
+    "automation",
+    "exceljs"
+  ],
+  "author": "Prytula",
+  "license": "MIT",
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "xlsx": "^0.18.5"
+  },
+  "engines": {
+    "node": ">=12.0.0"
+  }
+}
