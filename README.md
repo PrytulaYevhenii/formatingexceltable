@@ -9,6 +9,7 @@ A Node.js application for managing Excel backup journal files. This tool allows 
 - ⏰ Assign random times from predefined list
 - 🎨 Preserve cell formatting and styles
 - 💾 Interactive command-line interface
+- 🔒 Automatic backup creation before making changes
 
 ## Prerequisites
 
@@ -51,12 +52,13 @@ node addRow.js
 
 ## How It Works
 
-1. The application reads the Excel file using ExcelJS
-2. For each of the first 3 worksheets, it finds the last row with data in columns 2 and 3
-3. It asks the user whether to use this row as a base
-4. New rows are added weekly until the target date is reached
-5. Each new row gets a random time from the predefined list
-6. Cell formatting and styles are preserved from the base row
+1. The application creates a backup copy of the Excel file (adds "copy" to the filename)
+2. The application reads the Excel file using ExcelJS
+3. For each of the first 3 worksheets, it finds the last row with data in columns 2 and 3
+4. It asks the user whether to use this row as a base
+5. New rows are added weekly until the target date is reached
+6. Each new row gets a random time from the predefined list
+7. Cell formatting and styles are preserved from the base row
 
 ## Available Times
 

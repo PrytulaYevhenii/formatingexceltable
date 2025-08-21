@@ -59,8 +59,21 @@ function findLastValidRow(sheet) {
 }
 
 async function processFile(targetDate) {
+  const fs = require('fs');
+  const originalFileName = "ЖУРНАЛ резервного копіювання.xlsx";
+  const backupFileName = "ЖУРНАЛ резервного копіювання copy.xlsx";
+  
+  // Create a backup copy of the original file
+  try {
+    fs.copyFileSync(originalFileName, backupFileName);
+    console.log(`📋 Created backup: ${backupFileName}`);
+  } catch (error) {
+    console.error(`❌ Failed to create backup: ${error.message}`);
+    return;
+  }
+
   const workbook = new Excel.Workbook();
-  await workbook.xlsx.readFile("ЖУРНАЛ резервного копіювання.xlsx");
+  await workbook.xlsx.readFile(originalFileName);
 
   for (let sheetIndex = 0; sheetIndex < 3; sheetIndex++) {
     const sheet = workbook.worksheets[sheetIndex];
@@ -125,8 +138,9 @@ async function processFile(targetDate) {
     }
   }
 
-  await workbook.xlsx.writeFile("ЖУРНАЛ резервного копіювання.xlsx");
+  await workbook.xlsx.writeFile(originalFileName);
   console.log("✅ File updated successfully!");
+  console.log(`💾 Original backup saved as: ${backupFileName}`);
   rl.close();
 }
 
