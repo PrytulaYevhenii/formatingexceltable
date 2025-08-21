@@ -10,6 +10,7 @@ A Node.js application for managing Excel backup journal files. This tool allows 
 - 🎨 Preserve cell formatting and styles
 - 💾 Interactive command-line interface
 - 🔒 Automatic backup creation before making changes
+- 📁 Flexible file input (supports any Excel file path)
 
 ## Prerequisites
 
@@ -31,13 +32,28 @@ npm install
 
 ## Usage
 
-1. Make sure you have the Excel file "ЖУРНАЛ резервного копіювання.xlsx" in the project directory
-2. Run the application:
+1. Run the application:
 ```bash
 node addRow.js
 ```
+2. Enter the Excel filename when prompted (you can use just the filename if it's in the same directory, or provide the full path)
 3. Enter the target date in DD.MM.YYYY format when prompted
 4. For each worksheet, choose whether to use the last valid row as a base for new rows
+
+## Example
+
+```bash
+$ node addRow.js
+Enter Excel filename (e.g., 'file.xlsx' or full path): ЖУРНАЛ резервного копіювання.xlsx
+Enter target date (DD.MM.YYYY): 31.12.2025
+📋 Created backup: ЖУРНАЛ резервного копіювання copy.xlsx
+Sheet "Sheet1" last valid row:
+   Row #15: Column2="15.08.2025", Column3="10:30"
+Использовать эту строку как базу для добавления новых? (y/n): y
+   ➕ Added styled row at #16: ...
+✅ File updated successfully!
+💾 Original backup saved as: ЖУРНАЛ резервного копіювання copy.xlsx
+```
 
 ## Dependencies
 
@@ -52,13 +68,14 @@ node addRow.js
 
 ## How It Works
 
-1. The application creates a backup copy of the Excel file (adds "copy" to the filename)
-2. The application reads the Excel file using ExcelJS
-3. For each of the first 3 worksheets, it finds the last row with data in columns 2 and 3
-4. It asks the user whether to use this row as a base
-5. New rows are added weekly until the target date is reached
-6. Each new row gets a random time from the predefined list
-7. Cell formatting and styles are preserved from the base row
+1. The application prompts for an Excel filename (can be relative or absolute path)
+2. It creates a backup copy of the Excel file (adds " copy" before the file extension)
+3. The application reads the Excel file using ExcelJS
+4. For each of the first 3 worksheets, it finds the last row with data in columns 2 and 3
+5. It asks the user whether to use this row as a base
+6. New rows are added weekly until the target date is reached
+7. Each new row gets a random time from the predefined list
+8. Cell formatting and styles are preserved from the base row
 
 ## Available Times
 

@@ -58,10 +58,21 @@ function findLastValidRow(sheet) {
   return null;
 }
 
-async function processFile(targetDate) {
+async function processFile(targetDate, originalFileName) {
   const fs = require('fs');
-  const originalFileName = "ЖУРНАЛ резервного копіювання.xlsx";
-  const backupFileName = "ЖУРНАЛ резервного копіювання copy.xlsx";
+  const path = require('path');
+  
+  // Check if file exists
+  if (!fs.existsSync(originalFileName)) {
+    console.error(`❌ File "${originalFileName}" not found!`);
+    return;
+  }
+  
+  // Generate backup filename by inserting "copy" before the file extension
+  const ext = path.extname(originalFileName);
+  const baseName = path.basename(originalFileName, ext);
+  const dirName = path.dirname(originalFileName);
+  const backupFileName = path.join(dirName, `${baseName} copy${ext}`);
   
   // Create a backup copy of the original file
   try {
@@ -73,9 +84,44 @@ async function processFile(targetDate) {
   }
 
   const workbook = new Excel.Workbook();
-  await workbook.xlsx.readFile(originalFileName);
+  try {
+    await workbook.xlsx.readFile(originalFileName);
+  } catch (error) {
+    console.error(`❌ Failed to read Excel file: ${error.message}`);
+    return;
+  }
 
-  for (let sheetIndex = 0; sheetIndex < 3; sheetIndex++) {
+  // Show available worksheets
+  console.log("\n📊 Available worksheets:");
+  workbook.worksheets.forEach((sheet, index) => {
+    console.log(`   ${index + 1}. ${sheet.name}`);
+  });
+
+  // Ask user which worksheets to process
+  const worksheetInput = await new Promise(resolve => {
+    rl.question("\nEnter worksheet numbers to process (e.g., '1,2,3' or 'all'): ", answer => {
+      resolve(answer.trim());
+    });
+  });
+
+  let worksheetsToProcess = [];
+  if (worksheetInput.toLowerCase() === 'all') {
+    worksheetsToProcess = workbook.worksheets.map((_, index) => index);
+  } else {
+    const selectedNumbers = worksheetInput.split(',').map(num => parseInt(num.trim()) - 1);
+    worksheetsToProcess = selectedNumbers.filter(index => 
+      index >= 0 && index < workbook.worksheets.length
+    );
+  }
+
+  if (worksheetsToProcess.length === 0) {
+    console.log("❌ No valid worksheets selected");
+    return;
+  }
+
+  console.log(`\n🎯 Processing ${worksheetsToProcess.length} worksheet(s)...\n`);
+
+  for (const sheetIndex of worksheetsToProcess) {
     const sheet = workbook.worksheets[sheetIndex];
     if (!sheet) continue;
 
@@ -141,15 +187,43 @@ async function processFile(targetDate) {
   await workbook.xlsx.writeFile(originalFileName);
   console.log("✅ File updated successfully!");
   console.log(`💾 Original backup saved as: ${backupFileName}`);
-  rl.close();
 }
 
-rl.question("Enter target date (DD.MM.YYYY): ", async (answer) => {
-  const targetDate = parseDate(answer.trim());
+// Main execution
+async function main() {
+  // Ask for filename
+  const filename = await new Promise(resolve => {
+    rl.question("Enter Excel filename (e.g., 'file.xlsx' or full path): ", answer => {
+      resolve(answer.trim());
+    });
+  });
+
+  if (!filename) {
+    console.error("❌ No filename provided");
+    rl.close();
+    return;
+  }
+
+  // Ask for target date
+  const dateInput = await new Promise(resolve => {
+    rl.question("Enter target date (DD.MM.YYYY): ", answer => {
+      resolve(answer.trim());
+    });
+  });
+
+  const targetDate = parseDate(dateInput);
   if (!targetDate) {
     console.error("❌ Invalid date format. Use DD.MM.YYYY");
     rl.close();
     return;
   }
-  await processFile(targetDate);
+
+  await processFile(targetDate, filename);
+  rl.close();
+}
+
+// Start the application
+main().catch(error => {
+  console.error("❌ Application error:", error.message);
+  rl.close();
 });
