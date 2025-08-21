@@ -47,15 +47,16 @@ function formatDate(date) {
   return `${dd}.${mm}.${yyyy}`;
 }
 
-// Найти последнюю строку с текстом в колонках 2 и 3
-function findLastValidRow(sheet) {
-  for (let i = sheet.rowCount; i > 0; i--) {
+// Найти последние строки с текстом в колонках 2 и 3
+function findLastValidRows(sheet, count = 2) {
+  const validRows = [];
+  for (let i = sheet.rowCount; i > 0 && validRows.length < count; i--) {
     const row = sheet.getRow(i);
     if (row.getCell(2).value && row.getCell(3).value) {
-      return row;
+      validRows.push(row);
     }
   }
-  return null;
+  return validRows.reverse(); // Возвращаем в хронологическом порядке
 }
 
 async function processFile(targetDate, originalFileName) {
@@ -125,17 +126,20 @@ async function processFile(targetDate, originalFileName) {
     const sheet = workbook.worksheets[sheetIndex];
     if (!sheet) continue;
 
-    let lastRow = findLastValidRow(sheet);
-    if (!lastRow) {
+    let lastRows = findLastValidRows(sheet, 2);
+    if (lastRows.length === 0) {
       console.log(`⚠️ Sheet "${sheet.name}" не содержит строк с текстом в колонках 2 и 3, пропускаем`);
       continue;
     }
 
-    console.log(`Sheet "${sheet.name}" last valid row:`);
-    console.log(`   Row #${lastRow.number}: Column2="${lastRow.getCell(2).value}", Column3="${lastRow.getCell(3).value}"`);
+    const lastRow = lastRows[lastRows.length - 1]; // Самая последняя строка
+    console.log(`Sheet "${sheet.name}" last ${lastRows.length} valid row(s):`);
+    lastRows.forEach((row, index) => {
+      console.log(`   Row #${row.number}: Column2="${row.getCell(2).value}", Column3="${row.getCell(3).value}"`);
+    });
 
     const useRow = await new Promise(resolve => {
-      rl.question("Использовать эту строку как базу для добавления новых? (y/n): ", ans => {
+      rl.question("Использовать эти строки как базу для добавления новых? (y/n): ", ans => {
         resolve(ans.trim().toLowerCase() === "y");
       });
     });
@@ -147,12 +151,18 @@ async function processFile(targetDate, originalFileName) {
 
     let lastDate = parseDate(lastRow.getCell(2).value);
     let insertIndex = lastRow.number + 1; // следующая строка после найденной
+    let currentBaseRow = lastRow; // Текущая базовая строка для копирования
+
+    // Определяем максимальное количество колонок для копирования (базовое + 5 дополнительных)
+    const maxColumns = Math.max(
+      ...lastRows.map(row => row.cellCount)
+    ) + 5;
 
     while (lastDate < targetDate) {
       const newDate = new Date(lastDate.getTime() + 7*24*60*60*1000);
 
-      // создаём массив значений
-      const newRowValues = lastRow.values.slice();
+      // создаём массив значений из текущей базовой строки
+      const newRowValues = currentBaseRow.values.slice();
       newRowValues[2] = formatDate(newDate);
       newRowValues[3] = availableTimes[Math.floor(Math.random() * availableTimes.length)];
 
@@ -161,24 +171,35 @@ async function processFile(targetDate, originalFileName) {
 
       const newRow = sheet.getRow(insertIndex);
 
-      // копируем значения и стили
-      newRowValues.forEach((val, idx) => {
-        const cell = newRow.getCell(idx);
-        const lastCell = lastRow.getCell(idx);
+      // копируем значения и стили с расширенным диапазоном колонок
+      for (let colIndex = 1; colIndex <= maxColumns; colIndex++) {
+        const cell = newRow.getCell(colIndex);
+        const lastCell = currentBaseRow.getCell(colIndex);
+        
+        // Устанавливаем значение
+        if (colIndex < newRowValues.length) {
+          cell.value = newRowValues[colIndex];
+        }
 
-        cell.value = val;
+        // Копируем стили из текущей базовой строки или предпоследней (если доступна)
+        let sourceCell = lastCell;
+        if (lastRows.length > 1 && !lastCell.font && !lastCell.fill) {
+          // Если в текущей строке нет стилей, берем из предпоследней
+          const secondLastRow = lastRows[lastRows.length - 2];
+          sourceCell = secondLastRow.getCell(colIndex);
+        }
 
         // копируем стили
-        cell.font = lastCell.font;
-        cell.alignment = lastCell.alignment;
-        cell.border = lastCell.border;
-        cell.fill = lastCell.fill;
-        cell.numFmt = lastCell.numFmt;
-      });
+        if (sourceCell.font) cell.font = sourceCell.font;
+        if (sourceCell.alignment) cell.alignment = sourceCell.alignment;
+        if (sourceCell.border) cell.border = sourceCell.border;
+        if (sourceCell.fill) cell.fill = sourceCell.fill;
+        if (sourceCell.numFmt) cell.numFmt = sourceCell.numFmt;
+      }
 
-      console.log(`   ➕ Added styled row at #${insertIndex}: ${newRowValues}`);
+      console.log(`   ➕ Added styled row at #${insertIndex} with ${maxColumns} columns formatted`);
 
-      lastRow = newRow;
+      currentBaseRow = newRow; // Обновляем базовую строку
       lastDate = parseDate(newRow.getCell(2).value);
       insertIndex++;
     }
