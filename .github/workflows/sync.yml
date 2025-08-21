@@ -1,0 +1,38 @@
+name: Sync Excel Data
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout private excel repo (read-only)
+        uses: actions/checkout@v4
+        with:
+          repository: PrytulaYevhenii/excel
+          token: ${{ secrets.EXCEL_TOKEN }}
+          path: excel
+
+      - name: Checkout public formatingexceltable repo (read-write)
+        uses: actions/checkout@v4
+        with:
+          repository: PrytulaYevhenii/formatingexceltable
+          token: ${{ secrets.FORMAT_TOKEN }}
+          path: formatingexceltable
+
+      - name: Copy files from excel to formatingexceltable
+        run: |
+          cp -r excel/somefolder/* formatingexceltable/
+
+      - name: Commit and push changes
+        run: |
+            cd formatingexceltable
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .
+            git commit -m "Sync from private excel repo" || echo "No changes"
+            # Подставляем токен прямо в URL для пуша
+            git push https://${{ secrets.FORMAT_TOKEN }}@github.com/PrytulaYevhenii/formatingexceltable.git HEAD:master
+

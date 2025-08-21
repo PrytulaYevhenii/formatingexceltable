@@ -48,6 +48,4 @@ coverage/
 tmp/
 temp/
 
-# GitHub workflows sync files
-.github/workflows/sync.yml
-sync.yml
+
