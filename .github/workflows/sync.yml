@@ -1,55 +1,26 @@
-name: Sync Excel Data
+name: Sync master to public repo
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - master
 
 jobs:
   sync:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout private excel repo (read-only)
+      - name: Checkout source repo
         uses: actions/checkout@v4
         with:
-          repository: PrytulaYevhenii/excel
-          token: ${{ secrets.EXCEL_TOKEN }}
-          path: excel
+          fetch-depth: 0
 
-      - name: Checkout public formatingexceltable repo (read-write)
-        uses: actions/checkout@v4
-        with:
-          repository: PrytulaYevhenii/formatingexceltable
-          token: ${{ secrets.FORMAT_TOKEN }}
-          path: formatingexceltable
-
-      - name: Copy files from excel to formatingexceltable
+      - name: Set up Git
         run: |
-          # Copy the main application files
-          cp excel/addRow.js formatingexceltable/
-          cp excel/package.json formatingexceltable/
-          cp excel/README.md formatingexceltable/
-          cp excel/.gitignore formatingexceltable/
-          
-          # Create any missing directories
-          mkdir -p formatingexceltable/lib formatingexceltable/docs
-          
-          # Copy additional files if they exist
-          [ -f excel/LICENSE ] && cp excel/LICENSE formatingexceltable/ || true
-          [ -d excel/examples ] && cp -r excel/examples formatingexceltable/ || true
-
-      - name: Push to public repo
-        run: |
-          cd formatingexceltable
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .
-          
-          # Check if there are changes to commit
-          if ! git diff --staged --quiet; then
-            git commit -m "Sync from private excel repo - $(date '+%Y-%m-%d %H:%M:%S')"
-            git push origin HEAD:main
-          else
-            echo "No changes to commit"
-          fi
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-
+      - name: Mirror to public repo
+        run: |
+          git remote add public https://x-access-token:${{ secrets.PUBLIC_REPO_TOKEN }}@github.com/PrytulaYevhenii/formatingexceltable.git
+          git push --force public master:master
