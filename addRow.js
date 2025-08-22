@@ -148,7 +148,7 @@ function findLastValidRows(sheet, count = 2) {
 }
 
 // Main function to process the Excel file: creates a backup, reads the file, and adds new rows to selected worksheets
-async function processFile(targetDate, originalFileName) {
+async function processFile(dateOptions, originalFileName) {
   const fs = require('fs');
   const path = require('path');
   
@@ -221,7 +221,7 @@ async function processFile(targetDate, originalFileName) {
       continue;
     }
 
-    const lastRow = lastRows[lastRows.length - 1]; // Самая последняя строка
+    const lastRow = lastRows[lastRows.length - 1];
     console.log(`Sheet "${sheet.name}" last ${lastRows.length} valid row(s):`);
     lastRows.forEach((row, index) => {
       console.log(`   Row #${row.number}: Column2="${row.getCell(2).value}", Column3="${row.getCell(3).value}"`);
@@ -238,59 +238,39 @@ async function processFile(targetDate, originalFileName) {
       continue;
     }
 
-    // Remove feature: always insert at the end (default)
     let insertIndex = lastRow.number + 1;
+    let baseDate = dateOptions.useLastRowDate ? parseDate(lastRow.getCell(2).value) : dateOptions.startDate;
+    let lastDate = baseDate;
+    let currentBaseRow = lastRow;
+    const maxColumns = Math.max(...lastRows.map(row => row.cellCount)) + 5;
 
-    let lastDate = parseDate(lastRow.getCell(2).value);
-    let currentBaseRow = lastRow; // Текущая базовая строка для копирования
-
-    // Определяем максимальное количество колонок для копирования (базовое + 5 дополнительных)
-    const maxColumns = Math.max(
-      ...lastRows.map(row => row.cellCount)
-    ) + 5;
-
-    while (lastDate < targetDate) {
-      const newDate = new Date(lastDate.getTime() + 7*24*60*60*1000);
-
-      // создаём массив значений из текущей базовой строки
+    while (lastDate < dateOptions.endDate) {
+      const newDate = new Date(lastDate.getTime() + dateOptions.stepDays * 24 * 60 * 60 * 1000);
+      if (newDate > dateOptions.endDate) break;
       const newRowValues = currentBaseRow.values.slice();
       newRowValues[2] = formatDate(newDate);
       newRowValues[3] = availableTimes[Math.floor(Math.random() * availableTimes.length)];
-
-      // вставляем пустую строку на нужное место
       sheet.spliceRows(insertIndex, 0, []);
-
       const newRow = sheet.getRow(insertIndex);
-
-      // копируем значения и стили с расширенным диапазоном колонок
       for (let colIndex = 1; colIndex <= maxColumns; colIndex++) {
         const cell = newRow.getCell(colIndex);
         const lastCell = currentBaseRow.getCell(colIndex);
-        
-        // Устанавливаем значение
         if (colIndex < newRowValues.length) {
           cell.value = newRowValues[colIndex];
         }
-
-        // Копируем стили из текущей базовой строки или предпоследней (если доступна)
         let sourceCell = lastCell;
         if (lastRows.length > 1 && !lastCell.font && !lastCell.fill) {
-          // Если в текущей строке нет стилей, берем из предпоследней
           const secondLastRow = lastRows[lastRows.length - 2];
           sourceCell = secondLastRow.getCell(colIndex);
         }
-
-        // копируем стили
         if (sourceCell.font) cell.font = sourceCell.font;
         if (sourceCell.alignment) cell.alignment = sourceCell.alignment;
         if (sourceCell.border) cell.border = sourceCell.border;
         if (sourceCell.fill) cell.fill = sourceCell.fill;
         if (sourceCell.numFmt) cell.numFmt = sourceCell.numFmt;
       }
-
       console.log(`   ➕ Added styled row at #${insertIndex} with ${maxColumns} columns formatted`);
-
-      currentBaseRow = newRow; // Обновляем базовую строку
+      currentBaseRow = newRow;
       lastDate = parseDate(newRow.getCell(2).value);
       insertIndex++;
     }
@@ -299,6 +279,29 @@ async function processFile(targetDate, originalFileName) {
   await workbook.xlsx.writeFile(originalFileName);
   console.log("✅ File updated successfully!");
   console.log(`💾 Original backup saved as: ${backupFileName}`);
+}
+
+// --- Utility: Parse time string "HH:MM" to minutes since midnight ---
+function parseTimeString(str) {
+  if (!str || typeof str !== 'string') return null;
+  const [h, m] = str.split(":").map(Number);
+  if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
+}
+
+// --- Utility: Generate times in range, only those ending with 0 or 5 ---
+function generateTimesInRange(fromMin, toMin) {
+  const times = [];
+  for (let t = fromMin; t <= toMin; t++) {
+    const m = t % 60;
+    if (m % 5 === 0) {
+      const h = String(Math.floor(t / 60)).padStart(2, "0");
+      const mm = String(m).padStart(2, "0");
+      const timeStr = `${h}:${mm}`;
+      if (timeStr.endsWith("0") || timeStr.endsWith("5")) times.push(timeStr);
+    }
+  }
+  return times;
 }
 
 // Main execution
@@ -313,19 +316,46 @@ async function main() {
     return;
   }
 
-  // Ask for target date
-  const dateInput = await new Promise(resolve => {
-    rl.question("Enter target date (DD.MM.YYYY): ", answer => {
-      resolve(answer.trim());
+  // Ask for target date range and step
+  let startDate, endDate, stepDays;
+  // Ask for start date: allow using last row's date or manual entry
+  const useLastRowDate = await new Promise(resolve => {
+    rl.question("Use last valid row's date as start date? (y/n): ", ans => {
+      resolve(ans.trim().toLowerCase() === 'y');
     });
   });
 
-  const targetDate = parseDate(dateInput);
-  if (!targetDate) {
-    console.error("❌ Invalid date format. Use DD.MM.YYYY");
+  let lastRowDate = null;
+  if (useLastRowDate) {
+    // We'll get the last row date after file/worksheet selection, so just mark for later
+    startDate = null;
+  } else {
+    const startInput = await new Promise(resolve => {
+      rl.question("Enter start date (DD.MM.YYYY): ", answer => resolve(answer.trim()));
+    });
+    startDate = parseDate(startInput);
+    if (!startDate) {
+      console.error("❌ Invalid start date format. Use DD.MM.YYYY");
+      rl.close();
+      return;
+    }
+  }
+
+  const endInput = await new Promise(resolve => {
+    rl.question("Enter end date (DD.MM.YYYY): ", answer => resolve(answer.trim()));
+  });
+  endDate = parseDate(endInput);
+  if (!endDate) {
+    console.error("❌ Invalid end date format. Use DD.MM.YYYY");
     rl.close();
     return;
   }
+
+  const stepInput = await new Promise(resolve => {
+    rl.question("Enter step in days (default 7): ", answer => resolve(answer.trim()));
+  });
+  stepDays = parseInt(stepInput) || 7;
+  if (stepDays < 1) stepDays = 7;
 
   // --- New feature: Ask for time range ---
   let fromTime, toTime;
@@ -350,7 +380,7 @@ async function main() {
   console.log(`Using times: ${availableTimes.join(", ")}`);
   // --- End new feature ---
 
-  await processFile(targetDate, filename);
+  await processFile({ startDate, endDate, stepDays, useLastRowDate }, filename);
   rl.close();
 }
 
