@@ -1,17 +1,105 @@
 const Excel = require("exceljs");
 const readline = require("readline");
 
+// --- New feature: Smart file selection ---
+const fs = require('fs');
+const path = require('path');
+
+async function chooseExcelFile() {
+  // Find all .xlsx files in the current directory
+  const files = fs.readdirSync(process.cwd())
+    .filter(f => f.endsWith('.xlsx'));
+
+  if (files.length === 0) {
+    // No files found, ask for full path
+    return await new Promise(resolve => {
+      rl.question("No .xlsx files found in this folder. Enter full path to Excel file: ", answer => {
+        resolve(answer.trim());
+      });
+    });
+  }
+
+  // Show options
+  console.log("\nHow do you want to select the Excel file?");
+  console.log("1. Enter full path manually");
+  console.log("2. Choose from files in this folder:");
+  files.forEach((f, i) => {
+    console.log(`   ${i + 1}. ${f}`);
+  });
+
+  const choice = await new Promise(resolve => {
+    rl.question("Enter 1 to write full path, or 2 to choose from list: ", answer => {
+      resolve(answer.trim());
+    });
+  });
+
+  if (choice === '2') {
+    const fileNum = await new Promise(resolve => {
+      rl.question(`Enter file number (1-${files.length}): `, answer => {
+        resolve(parseInt(answer.trim()));
+      });
+    });
+    if (!isNaN(fileNum) && fileNum >= 1 && fileNum <= files.length) {
+      return files[fileNum - 1];
+    } else {
+      console.log('❌ Invalid selection.');
+      return process.exit(1);
+    }
+  } else {
+    // Default to manual entry
+    return await new Promise(resolve => {
+      rl.question("Enter full path to Excel file: ", answer => {
+        resolve(answer.trim());
+      });
+    });
+  }
+}
+// --- End new feature ---
+
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
 });
 
-// List of available times for random assignment to new rows
-const availableTimes = [
-  "9:35","10:30","9:50","9:35","10:00","11:00","11:20",
-  "10:00","9:50","10:00","11:00","9:20","9:50","9:20",
-  "9:30","10:30","11:30","12:30","9:30","11:30","10:20"
-];
+// --- New feature: Ask user for time range and generate availableTimes dynamically ---
+async function getAvailableTimes() {
+  function parseTime(str) {
+    const [h, m] = str.split(":").map(Number);
+    if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return h * 60 + m;
+  }
+  function formatTime(minutes) {
+    const h = String(Math.floor(minutes / 60)).padStart(2, "0");
+    const m = String(minutes % 60).padStart(2, "0");
+    return `${h}:${m.padStart(2, "0")}`;
+  }
+  const from = await new Promise(resolve => {
+    rl.question("Enter start time (HH:MM): ", answer => resolve(answer.trim()));
+  });
+  const till = await new Promise(resolve => {
+    rl.question("Enter end time (HH:MM): ", answer => resolve(answer.trim()));
+  });
+  const fromMin = parseTime(from);
+  const tillMin = parseTime(till);
+  if (fromMin === null || tillMin === null || fromMin >= tillMin) {
+    console.error("❌ Invalid time range. Please use HH:MM format and ensure start < end.");
+    rl.close();
+    process.exit(1);
+  }
+  const times = [];
+  for (let t = fromMin; t <= tillMin; t++) {
+    const m = t % 60;
+    if (m % 5 === 0) {
+      const timeStr = formatTime(t);
+      if (timeStr.endsWith("0") || timeStr.endsWith("5")) times.push(timeStr);
+    }
+  }
+  return times;
+}
+// --- End new feature ---
+
+// Remove hardcoded availableTimes, will be set in main()
+let availableTimes = [];
 
 // Безопасный парсер даты для ExcelJS
 function parseDate(value) {
@@ -150,8 +238,10 @@ async function processFile(targetDate, originalFileName) {
       continue;
     }
 
+    // Remove feature: always insert at the end (default)
+    let insertIndex = lastRow.number + 1;
+
     let lastDate = parseDate(lastRow.getCell(2).value);
-    let insertIndex = lastRow.number + 1; // следующая строка после найденной
     let currentBaseRow = lastRow; // Текущая базовая строка для копирования
 
     // Определяем максимальное количество колонок для копирования (базовое + 5 дополнительных)
@@ -213,12 +303,9 @@ async function processFile(targetDate, originalFileName) {
 
 // Main execution
 async function main() {
-  // Ask for filename
-  const filename = await new Promise(resolve => {
-    rl.question("Enter Excel filename (e.g., 'file.xlsx' or full path): ", answer => {
-      resolve(answer.trim());
-    });
-  });
+  // --- New feature: Use smart file selection ---
+  const filename = await chooseExcelFile();
+  // --- End new feature ---
 
   if (!filename) {
     console.error("❌ No filename provided");
@@ -239,6 +326,29 @@ async function main() {
     rl.close();
     return;
   }
+
+  // --- New feature: Ask for time range ---
+  let fromTime, toTime;
+  while (true) {
+    const fromInput = await new Promise(resolve => {
+      rl.question("Enter start time (HH:MM, e.g. 10:00): ", answer => resolve(answer.trim()));
+    });
+    const toInput = await new Promise(resolve => {
+      rl.question("Enter end time (HH:MM, e.g. 13:00): ", answer => resolve(answer.trim()));
+    });
+    fromTime = parseTimeString(fromInput);
+    toTime = parseTimeString(toInput);
+    if (fromTime !== null && toTime !== null && fromTime < toTime) break;
+    console.log("❌ Invalid time range. Please enter valid times in HH:MM format, and make sure start < end.");
+  }
+  availableTimes = generateTimesInRange(fromTime, toTime);
+  if (availableTimes.length === 0) {
+    console.error("❌ No valid times in this range ending with 0 or 5. Try a different range.");
+    rl.close();
+    return;
+  }
+  console.log(`Using times: ${availableTimes.join(", ")}`);
+  // --- End new feature ---
 
   await processFile(targetDate, filename);
   rl.close();
