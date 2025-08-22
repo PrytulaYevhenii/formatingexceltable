@@ -6,7 +6,7 @@ const rl = readline.createInterface({
   output: process.stdout,
 });
 
-// Список доступных времён
+// List of available times for random assignment to new rows
 const availableTimes = [
   "9:35","10:30","9:50","9:35","10:00","11:00","11:20",
   "10:00","9:50","10:00","11:00","9:20","9:50","9:20",
@@ -59,6 +59,7 @@ function findLastValidRows(sheet, count = 2) {
   return validRows.reverse(); // Возвращаем в хронологическом порядке
 }
 
+// Main function to process the Excel file: creates a backup, reads the file, and adds new rows to selected worksheets
 async function processFile(targetDate, originalFileName) {
   const fs = require('fs');
   const path = require('path');
